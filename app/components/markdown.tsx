@@ -7,12 +7,61 @@ import RemarkGfm from "remark-gfm";
 import RehypeHighlight from "rehype-highlight";
 import { useRef, useState, RefObject, useEffect } from "react";
 import { copyToClipboard } from "../utils";
+import mermaid from "mermaid";
 
 import LoadingIcon from "../icons/three-dots.svg";
 import React from "react";
 
+export function Mermaid(props: { code: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (props.code && ref.current) {
+      mermaid.run({
+        nodes: [ref.current],
+      });
+    }
+  }, [props.code]);
+
+  function viewSvgInNewWindow() {
+    const svg = ref.current?.querySelector("svg");
+    if (!svg) return;
+    const text = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([text], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url);
+    if (win) {
+      win.onload = () => URL.revokeObjectURL(url);
+    }
+  }
+
+  return (
+    <div
+      className="no-dark"
+      style={{ cursor: "pointer" }}
+      ref={ref}
+      onClick={() => viewSvgInNewWindow()}
+    >
+      {props.code}
+    </div>
+  );
+}
+
 export function PreCode(props: { children: any }) {
   const ref = useRef<HTMLPreElement>(null);
+  const [mermaidCode, setMermaidCode] = useState("");
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const mermaidDom = ref.current.querySelector("code.language-mermaid");
+    if (mermaidDom) {
+      setMermaidCode((mermaidDom as HTMLElement).innerText);
+    }
+  }, [props.children]);
+
+  if (mermaidCode) {
+    return <Mermaid code={mermaidCode} />;
+  }
 
   return (
     <pre ref={ref}>
@@ -46,8 +95,13 @@ function _MarkDownContent(props: { content: string }) {
       ]}
       components={{
         pre: PreCode,
+        a: (aProps) => {
+          const href = aProps.href || "";
+          const isInternal = /^\/#/i.test(href);
+          const target = isInternal ? "_self" : aProps.target ?? "_blank";
+          return <a {...aProps} target={target} />;
+        },
       }}
-      linkTarget={"_blank"}
     >
       {props.content}
     </ReactMarkdown>
@@ -77,10 +131,12 @@ export function Markdown(
       const parentBounds = parent.getBoundingClientRect();
       const twoScreenHeight = Math.max(500, parentBounds.height * 2);
       const mdBounds = md.getBoundingClientRect();
-      const isInRange = (x: number) =>
-        x <= parentBounds.bottom + twoScreenHeight &&
-        x >= parentBounds.top - twoScreenHeight;
-      inView.current = isInRange(mdBounds.top) || isInRange(mdBounds.bottom);
+      const parentTop = parentBounds.top - twoScreenHeight;
+      const parentBottom = parentBounds.bottom + twoScreenHeight;
+      const isOverlap =
+        Math.max(parentTop, mdBounds.top) <=
+        Math.min(parentBottom, mdBounds.bottom);
+      inView.current = isOverlap;
     }
 
     if (inView.current && md) {
